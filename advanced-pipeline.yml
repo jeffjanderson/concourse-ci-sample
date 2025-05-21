@@ -1,0 +1,82 @@
+resources:
+  - name: source-code
+    type: git
+    source:
+      uri: https://github.com/concourse/examples.git
+      branch: master
+
+  - name: every-minute
+    type: time
+    source:
+      interval: 1m
+
+jobs:
+  - name: test
+    plan:
+      - get: source-code
+        trigger: true
+      - task: run-tests
+        config:
+          platform: linux
+          image_resource:
+            type: registry-image
+            source: {repository: busybox}
+          inputs:
+            - name: source-code
+          run:
+            path: sh
+            args:
+              - -c
+              - |
+                echo "Running tests..."
+                ls -la source-code/
+                echo "Tests passed!"
+
+  - name: build
+    plan:
+      - get: source-code
+        passed: [test]
+        trigger: true
+      - task: build-artifact
+        config:
+          platform: linux
+          image_resource:
+            type: registry-image
+            source: {repository: busybox}
+          inputs:
+            - name: source-code
+          outputs:
+            - name: built-artifact
+          run:
+            path: sh
+            args:
+              - -c
+              - |
+                echo "Building artifact..."
+                mkdir -p built-artifact/files
+                echo "This is a build artifact" > built-artifact/files/artifact.txt
+                echo "Build completed at $(date)" >> built-artifact/files/artifact.txt
+                ls -la built-artifact/files/
+
+  - name: deploy
+    plan:
+      - get: source-code
+        passed: [build]
+        trigger: true
+      - get: every-minute
+        trigger: true
+      - task: deploy-artifact
+        config:
+          platform: linux
+          image_resource:
+            type: registry-image
+            source: {repository: busybox}
+          inputs:
+            - name: source-code
+          run:
+            path: sh
+            args:
+              - -c
+              - |
+                echo "Deploying to environment..."
+                echo "Deployment successful at $(date)!"
